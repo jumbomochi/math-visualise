@@ -7,3 +7,4 @@
 import './FunctionBasics';
 import './GraphTransformations';
 import './RationalFunctions';
+import './GraphingCalculator';

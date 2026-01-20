@@ -81,6 +81,12 @@ export const SYLLABUS_STRUCTURE: SyllabusStrandDef[] = [
         description: 'Graphing rational functions and asymptotes',
         modules: ['functions.rational'],
       },
+      {
+        id: 'graphing-calculator',
+        name: 'Graphing Calculator',
+        description: 'Interactive graphing calculator for plotting functions',
+        modules: ['functions.graphing-calculator'],
+      },
     ],
   },
 
