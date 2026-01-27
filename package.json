@@ -5,13 +5,10 @@
   "type": "module",
   "description": "H2 Mathematics Teaching Aid - Singapore SEAB 9758 Syllabus",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
     "@react-three/drei": "^9.96.0",
@@ -20,6 +17,7 @@
     "framer-motion": "^11.0.3",
     "katex": "^0.16.9",
     "lucide-react": "^0.344.0",
+    "next": "^14.2.21",
     "p5": "^1.9.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
