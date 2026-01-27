@@ -8,7 +8,8 @@
 import { FC, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { ChevronDown, ChevronRight, Home } from 'lucide-react';
+import { ChevronDown, ChevronRight, Home, Upload } from 'lucide-react';
+import Link from 'next/link';
 import { SYLLABUS_STRUCTURE, SyllabusTopicDef } from '@/data/syllabus/syllabusStructure';
 import { useNavigationStore, useNavigationActions } from '@/store/navigationStore';
 import { moduleRegistry } from '@/core/registry/ModuleRegistry';
@@ -177,6 +178,17 @@ const SyllabusNavigator: FC = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Import Link */}
+      <div className="px-4 py-2 border-t border-gray-200">
+        <Link
+          href="/import"
+          className="nav-item w-full flex items-center gap-2 text-left hover:bg-blue-50 hover:text-blue-700"
+        >
+          <Upload size={18} />
+          Import PDF
+        </Link>
       </div>
 
       {/* Footer */}
