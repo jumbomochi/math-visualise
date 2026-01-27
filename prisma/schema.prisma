@@ -24,6 +24,9 @@ model ImportedPDF {
 
   questions ExtractedQuestion[]
   lessons   ExtractedLesson[]
+
+  @@index([status])
+  @@index([createdAt])
 }
 
 model ExtractedQuestion {
@@ -50,6 +53,10 @@ model ExtractedQuestion {
   questionNum  String?
 
   createdAt    DateTime @default(now())
+
+  @@index([pdfId])
+  @@index([topic])
+  @@index([school, year, examType])
 }
 
 model ExtractedLesson {
@@ -64,4 +71,7 @@ model ExtractedLesson {
   order        Int      @default(0)
 
   createdAt    DateTime @default(now())
+
+  @@index([pdfId])
+  @@index([topic])
 }
