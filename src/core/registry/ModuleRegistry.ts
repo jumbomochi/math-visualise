@@ -179,26 +179,26 @@ class ModuleRegistry {
    * @returns True if module was removed, false if it didn't exist
    */
   unregister(moduleId: string): boolean {
-    const module = this.modules.get(moduleId);
-    if (!module) return false;
+    const moduleEntry = this.modules.get(moduleId);
+    if (!moduleEntry) return false;
 
     // Remove from main registry
     this.modules.delete(moduleId);
 
     // Remove from strand index
-    const strandSet = this.modulesByStrand.get(module.syllabusRef.strand);
+    const strandSet = this.modulesByStrand.get(moduleEntry.syllabusRef.strand);
     if (strandSet) {
       strandSet.delete(moduleId);
     }
 
     // Remove from topic index
-    const topicSet = this.modulesByTopic.get(module.syllabusRef.topic);
+    const topicSet = this.modulesByTopic.get(moduleEntry.syllabusRef.topic);
     if (topicSet) {
       topicSet.delete(moduleId);
     }
 
     // Remove from tag indices
-    module.metadata.tags.forEach((tag) => {
+    moduleEntry.metadata.tags.forEach((tag) => {
       const tagSet = this.modulesByTag.get(tag);
       if (tagSet) {
         tagSet.delete(moduleId);
