@@ -10,12 +10,12 @@
 import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import AppLayout from '@/components/layout/AppLayout';
-import { useNavigationStore } from '@/store/navigationStore';
-import { useVisualization } from '@/core/hooks/useVisualization';
+import { useNavigationStore } from '@/lib/store/navigationStore';
+import { useVisualization } from '@/lib/core/hooks/useVisualization';
 import { Home } from 'lucide-react';
 import { CalculatorButton } from '@/components/tools/CalculatorButton';
 import { TI84Calculator } from '@/components/tools/TI84Calculator';
-import { useCalculatorStore } from '@/store/calculatorStore';
+import { useCalculatorStore } from '@/lib/store/calculatorStore';
 
 // Import modules to trigger registration and get registry
 import { moduleRegistry } from '@/modules';
