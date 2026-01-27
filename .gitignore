@@ -22,5 +22,14 @@ dist/
 *.log
 npm-debug.log*
 
+# Database
+*.db
+*.db-journal
+
 # Cache
 .cache/
+
+# Worktrees
+.worktrees/
+
+/src/generated/prisma

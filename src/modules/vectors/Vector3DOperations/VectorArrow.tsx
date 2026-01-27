@@ -65,20 +65,23 @@ const VectorArrow: React.FC<VectorArrowProps> = ({
     };
   }, [start, end]);
 
-  // Don't render if vector has zero length
-  if (length === 0) {
-    return null;
-  }
-
   const coneHeight = Math.min(0.3, length * 0.15);
   const coneRadius = coneHeight * 0.4;
 
   // Adjust line end to not overlap with cone
   const lineEnd = useMemo(() => {
+    if (length === 0) {
+      return end;
+    }
     const endVec = new THREE.Vector3(...end);
     const adjusted = endVec.sub(direction.clone().multiplyScalar(coneHeight));
     return [adjusted.x, adjusted.y, adjusted.z] as [number, number, number];
-  }, [end, direction, coneHeight]);
+  }, [end, direction, coneHeight, length]);
+
+  // Don't render if vector has zero length
+  if (length === 0) {
+    return null;
+  }
 
   return (
     <group>

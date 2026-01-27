@@ -1,0 +1,77 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model ImportedPDF {
+  id            String   @id @default(cuid())
+  filename      String
+  source        String?
+  pageCount     Int      @default(0)
+  status        String   @default("processing") // processing | ready_for_review | completed | failed
+  errorMessage  String?
+  extractedData String?  // JSON string of extracted content
+  questionsCount Int?
+  lessonsCount   Int?
+  createdAt     DateTime @default(now())
+  completedAt   DateTime?
+
+  questions ExtractedQuestion[]
+  lessons   ExtractedLesson[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model ExtractedQuestion {
+  id           String   @id @default(cuid())
+  pdfId        String
+  pdf          ImportedPDF @relation(fields: [pdfId], references: [id], onDelete: Cascade)
+
+  // Content
+  content      String
+  solution     String?
+  answer       String?
+  hints        String?  // JSON array
+
+  // Classification
+  topic        String
+  difficulty   Int      @default(2)
+  confidence   Float    @default(0.5)
+
+  // Paper metadata
+  school       String
+  year         Int
+  examType     String   // midyear | promo | prelim | topical
+  paperNumber  Int?
+  questionNum  String?
+
+  createdAt    DateTime @default(now())
+
+  @@index([pdfId])
+  @@index([topic])
+  @@index([school, year, examType])
+}
+
+model ExtractedLesson {
+  id           String   @id @default(cuid())
+  pdfId        String
+  pdf          ImportedPDF @relation(fields: [pdfId], references: [id], onDelete: Cascade)
+
+  title        String
+  content      String
+  contentType  String   // theory | example | worked_solution | summary
+  topic        String
+  order        Int      @default(0)
+
+  createdAt    DateTime @default(now())
+
+  @@index([pdfId])
+  @@index([topic])
+}
