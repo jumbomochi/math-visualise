@@ -1,6 +1,6 @@
 // PDF text extraction with page splitting
 
-import { PDFParse } from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 
 export interface PDFExtractionResult {
   text: string;
@@ -15,31 +15,30 @@ export interface PDFExtractionResult {
 export async function extractTextFromPDF(
   buffer: Buffer
 ): Promise<PDFExtractionResult> {
-  const parser = new PDFParse({ data: buffer });
-
   try {
-    const [textResult, infoResult] = await Promise.all([
-      parser.getText(),
-      parser.getInfo(),
-    ]);
+    const result = await pdfParse(buffer);
 
-    const extractedText = normalizeText(textResult.text);
-    const pages = textResult.pages.map(page => normalizeText(page.text));
+    const extractedText = normalizeText(result.text);
+
+    // pdf-parse v1 doesn't provide per-page text, so we'll use the full text
+    // and estimate pages based on form feeds or page breaks
+    const pages = extractedText
+      .split(/\f|\n{3,}/)
+      .filter(page => page.trim().length > 0)
+      .map(page => normalizeText(page));
 
     return {
       text: extractedText,
-      pageCount: textResult.total,
-      pages,
+      pageCount: result.numpages,
+      pages: pages.length > 0 ? pages : [extractedText],
       metadata: {
-        title: infoResult.info?.Title || undefined,
-        author: infoResult.info?.Author || undefined,
+        title: result.info?.Title || undefined,
+        author: result.info?.Author || undefined,
       },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     throw new Error(`Failed to extract PDF text: ${message}`);
-  } finally {
-    await parser.destroy();
   }
 }
 

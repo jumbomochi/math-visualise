@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
             solution: q.solution,
             answer: q.answer,
             hints: q.hints ? JSON.stringify(q.hints) : null,
+            diagramImage: q.diagramImage,
+            marks: q.marks,
             topic: q.topic,
             difficulty: q.difficulty,
             confidence: q.confidence,

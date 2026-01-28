@@ -1,4 +1,4 @@
-// AI-powered extraction of questions and lessons from PDF text
+// AI-powered extraction of questions from PDF text
 
 import { ollama } from './ollama-client';
 import {
@@ -9,69 +9,39 @@ import {
   H2Topic,
 } from './import-types';
 
-const EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting content from Singapore H2 Mathematics exam papers and notes.
+const EXTRACTION_SYSTEM_PROMPT = `You extract math questions from Singapore H2 Mathematics exam papers into JSON.
 
-Your task is to:
-1. Identify and extract math QUESTIONS with their solutions
-2. Identify and extract LESSON content (theory, examples, explanations)
+CRITICAL RULES:
+1. Keep multi-part questions TOGETHER as ONE question (Q1 with parts (i), (ii), (iii) is ONE question)
+2. Include ALL text exactly as written - equations, conditions, "Hence" parts, mark allocations
+3. Note if a question has a diagram by setting hasDiagram: true
+4. Wrap ALL math expressions in dollar signs: $\\frac{a}{b}$, $\\sqrt{x}$, $\\int_0^1 f(x) dx$
+5. Use $...$ for inline math and $$...$$ for displayed equations
 
-## H2 Math Topics (use these exact slugs):
-- vectors: 3D vectors, dot product, cross product, lines, planes
-- probability: Basic probability, conditional probability, Bayes
-- statistics: Distributions, hypothesis testing, correlation, regression
-- combinatorics: Permutations, combinations, arrangements
-- calculus: Differentiation, integration, applications
-- complex-numbers: Complex number operations, Argand diagrams
-- functions: Graphs, transformations, inverse functions
+Topics (use exact slug):
+- vectors, probability, statistics, combinatorics, calculus, complex-numbers, functions
 
-## For QUESTIONS extract:
-- content: Full question text with LaTeX math (use $...$ for inline, $$...$$ for display)
-- solution: Step-by-step worked solution if present
-- answer: Final answer
-- topic: One of the topic slugs above
-- difficulty: 1-5 (1=basic, 2=standard, 3=challenging, 4=competition, 5=olympiad)
-- questionNum: Original question number (e.g., "Q5", "Q10(iii)")
-
-## For LESSONS extract:
-- title: Short descriptive title
-- content: The educational content with LaTeX formatting
-- contentType: "theory" | "example" | "worked_solution" | "summary"
-- topic: One of the topic slugs above
-- order: Sequence number (1, 2, 3...)
-
-## LaTeX Formatting:
-- Fractions: \\frac{a}{b}
-- Vectors: \\mathbf{a} or \\vec{a}
-- Integrals: \\int_a^b f(x) \\, dx
-- Derivatives: \\frac{dy}{dx}
-- Summations: \\sum_{i=1}^{n}
-
-## Output JSON format:
+Output ONLY this JSON structure:
 {
   "questions": [
     {
-      "content": "...",
-      "solution": "...",
-      "answer": "...",
-      "topic": "vectors",
-      "difficulty": 3,
-      "questionNum": "Q5(a)",
+      "questionNum": "1",
+      "content": "Solve the equation $x^2 + 2x + 1 = 0$.\n(i) Find the roots [2]\n(ii) Hence find $\\sum_{n=1}^{\\infty} x^n$ [3]",
+      "marks": 5,
+      "hasDiagram": false,
+      "topic": "calculus",
+      "difficulty": 2,
       "confidence": 0.9
-    }
-  ],
-  "lessons": [
-    {
-      "title": "...",
-      "content": "...",
-      "contentType": "theory",
-      "topic": "vectors",
-      "order": 1,
-      "confidence": 0.85
     }
   ]
 }
 
-Be thorough. Extract ALL questions and lesson content. Use proper LaTeX notation.`;
+Example of correct extraction:
+Question: "1  Solve exactly the inequality 32x/(x-4) <= x+12 [3]  Hence solve... [2]"
+Should become: questionNum "1", content with math wrapped: "Solve exactly the inequality $\\frac{32x}{x-4} \\leq x+12$ [3]\\n\\nHence solve... [2]", marks: 5
+
+Question: "3  The diagram below shows... (i) Sketch the curve y=f(x) [2]"
+Should become: questionNum "3", hasDiagram: true, content: "The diagram below shows...\\n(i) Sketch the curve $y = f(x)$ [2]"`;
 
 export async function extractContentWithAI(
   pdfText: string,
@@ -85,8 +55,7 @@ export async function extractContentWithAI(
 
   // Split text into chunks if too long
   const chunks = splitIntoChunks(pdfText);
-  const allQuestions: ExtractedQuestion[] = [];
-  const allLessons: ExtractedLesson[] = [];
+  const questionsByNum = new Map<string, ExtractedQuestion>();
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
@@ -99,43 +68,57 @@ export async function extractContentWithAI(
         { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
         {
           role: 'user',
-          content: `Extract all questions and lesson content from this H2 Math paper:${chunkContext}\n\n---\n\n${chunk}`,
+          content: `Extract all questions from this H2 Math paper. Keep multi-part questions together as single questions.${chunkContext}\n\n---\n\n${chunk}`,
         },
       ]);
 
       const parsed = parseAIResponse(response);
 
-      // Add questions with tempIds
-      const questions = parsed.questions.map((q, idx) => ({
-        ...q,
-        tempId: `q-${Date.now()}-${i}-${idx}`,
-        needsReview: q.confidence < 0.7,
-      }));
-      allQuestions.push(...questions);
+      // Process questions, merging if same question number appears
+      for (const q of parsed.questions) {
+        const questionNum = normalizeQuestionNum(q.questionNum);
+        const existing = questionsByNum.get(questionNum);
 
-      // Add lessons with tempIds
-      const lessons = parsed.lessons.map((l, idx) => ({
-        ...l,
-        tempId: `l-${Date.now()}-${i}-${idx}`,
-      }));
-      allLessons.push(...lessons);
+        if (existing) {
+          // Merge content if question continues
+          existing.content += '\n\n' + q.content;
+          if (q.marks) existing.marks = (existing.marks || 0) + q.marks;
+          if (q.hasDiagram) existing.diagramDescription = 'This question includes a diagram';
+        } else {
+          const extracted: ExtractedQuestion = {
+            tempId: `q-${Date.now()}-${i}-${questionsByNum.size}`,
+            content: q.content,
+            topic: validateTopic(q.topic),
+            difficulty: Math.min(5, Math.max(1, q.difficulty || 2)),
+            confidence: q.confidence || 0.8,
+            questionNum,
+            marks: q.marks,
+            diagramDescription: q.hasDiagram ? 'This question includes a diagram' : undefined,
+            needsReview: q.confidence < 0.7 || q.hasDiagram,
+          };
+          questionsByNum.set(questionNum, extracted);
+        }
+      }
     } catch (error) {
       console.error(`Error processing chunk ${i + 1}:`, error);
     }
   }
 
-  // Deduplicate
-  const uniqueQuestions = deduplicateQuestions(allQuestions);
-  const uniqueLessons = deduplicateLessons(allLessons);
+  // Convert map to sorted array
+  const sortedQuestions = Array.from(questionsByNum.values()).sort((a, b) => {
+    const numA = parseInt(a.questionNum?.replace(/\D/g, '') || '0');
+    const numB = parseInt(b.questionNum?.replace(/\D/g, '') || '0');
+    return numA - numB;
+  });
 
   return {
-    questions: uniqueQuestions,
-    lessons: uniqueLessons,
+    questions: sortedQuestions,
+    lessons: [],
     metadata,
   };
 }
 
-function splitIntoChunks(text: string, maxChars = 12000): string[] {
+function splitIntoChunks(text: string, maxChars = 10000): string[] {
   if (text.length <= maxChars) {
     return [text];
   }
@@ -157,34 +140,131 @@ function splitIntoChunks(text: string, maxChars = 12000): string[] {
   return chunks;
 }
 
-function parseAIResponse(response: string): {
-  questions: Omit<ExtractedQuestion, 'tempId' | 'needsReview'>[];
-  lessons: Omit<ExtractedLesson, 'tempId'>[];
-} {
-  // Extract JSON from response
+interface ParsedQuestion {
+  questionNum: string;
+  content: string;
+  marks?: number;
+  hasDiagram?: boolean;
+  topic: string;
+  difficulty: number;
+  confidence: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeQuestion(raw: any): ParsedQuestion | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  // Get question number from various field names (models use different conventions)
+  const questionNum = raw.questionNum || raw.questionNumber || raw.question_number ||
+    raw.number || raw.num || raw.qNum || raw.q || '';
+
+  // Debug: log what we found
+  console.log('Normalizing question:', {
+    keys: Object.keys(raw),
+    questionNum,
+    hasContent: !!raw.content,
+    hasText: !!raw.text,
+    hasParts: Array.isArray(raw.parts),
+  });
+
+  if (!questionNum) {
+    console.log('Skipping question: no question number found');
+    return null;
+  }
+
+  // Get content - handle 'parts' array format
+  let content = '';
+  if (raw.content && typeof raw.content === 'string') {
+    content = raw.content;
+  } else if (Array.isArray(raw.parts)) {
+    // Flatten parts array into single content string
+    content = raw.parts.map((part: { part_number?: string; partNum?: string; text?: string; content?: string }) => {
+      const partNum = part.part_number || part.partNum || '';
+      const partText = part.text || part.content || '';
+      return partNum ? `${partNum} ${partText}` : partText;
+    }).join('\n');
+  } else if (raw.text && typeof raw.text === 'string') {
+    content = raw.text;
+  }
+
+  if (!content) {
+    console.log('Skipping question: no content found');
+    return null;
+  }
+
+  // Get topic - handle various formats
+  const topic = raw.topic || raw.category || 'calculus';
+
+  // Get marks - could be number or in content
+  let marks = typeof raw.marks === 'number' ? raw.marks : undefined;
+  if (!marks && typeof raw.total_marks === 'number') marks = raw.total_marks;
+
+  // Detect diagram
+  const hasDiagram = raw.hasDiagram === true ||
+    raw.has_diagram === true ||
+    raw.diagram === true ||
+    (typeof raw.diagram === 'string' && raw.diagram.length > 0) ||
+    /diagram|figure|graph|sketch/i.test(content);
+
+  return {
+    questionNum: String(questionNum),
+    content,
+    marks,
+    hasDiagram,
+    topic: typeof topic === 'string' ? topic : 'calculus',
+    difficulty: typeof raw.difficulty === 'number' ? raw.difficulty : 2,
+    confidence: typeof raw.confidence === 'number' ? raw.confidence : 0.8,
+  };
+}
+
+function parseAIResponse(response: string): { questions: ParsedQuestion[] } {
+  console.log('Raw AI response (first 1500 chars):', response.slice(0, 1500));
+
   let jsonStr = response;
 
+  // Remove markdown code blocks
   const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) {
     jsonStr = jsonMatch[1];
   }
 
+  // Find JSON object
   const jsonStart = jsonStr.indexOf('{');
   const jsonEnd = jsonStr.lastIndexOf('}');
   if (jsonStart !== -1 && jsonEnd !== -1) {
     jsonStr = jsonStr.slice(jsonStart, jsonEnd + 1);
   }
 
+  // Clean up
+  jsonStr = jsonStr.trim();
+
   try {
     const parsed = JSON.parse(jsonStr);
-    return {
-      questions: (parsed.questions || []).map(validateQuestion),
-      lessons: (parsed.lessons || []).map(validateLesson),
-    };
+    const rawQuestions = Array.isArray(parsed.questions) ? parsed.questions : [];
+
+    // Normalize each question to handle different formats
+    const normalizedQuestions = rawQuestions
+      .map(normalizeQuestion)
+      .filter((q): q is ParsedQuestion => q !== null);
+
+    console.log('Parsed successfully:', {
+      rawCount: rawQuestions.length,
+      normalizedCount: normalizedQuestions.length
+    });
+
+    return { questions: normalizedQuestions };
   } catch (error) {
     console.error('Failed to parse AI response:', error);
-    return { questions: [], lessons: [] };
+    console.error('JSON string:', jsonStr.slice(0, 500));
+    return { questions: [] };
   }
+}
+
+function normalizeQuestionNum(num: string): string {
+  if (!num) return 'Q?';
+  // Extract just the main number
+  const match = String(num).match(/\d+/);
+  return match ? `Q${match[0]}` : `Q${num}`;
 }
 
 const VALID_TOPICS: H2Topic[] = [
@@ -192,59 +272,41 @@ const VALID_TOPICS: H2Topic[] = [
   'calculus', 'complex-numbers', 'functions',
 ];
 
-function validateQuestion(q: Record<string, unknown>) {
-  const topic = VALID_TOPICS.includes(q.topic as H2Topic)
-    ? (q.topic as H2Topic)
-    : 'calculus';
+function validateTopic(topic: string): H2Topic {
+  const normalized = topic?.toLowerCase().replace(/\s+/g, '-');
+  if (VALID_TOPICS.includes(normalized as H2Topic)) {
+    return normalized as H2Topic;
+  }
 
-  return {
-    content: String(q.content || ''),
-    solution: q.solution ? String(q.solution) : undefined,
-    answer: q.answer ? String(q.answer) : undefined,
-    hints: Array.isArray(q.hints) ? q.hints.map(String) : undefined,
-    topic,
-    difficulty: typeof q.difficulty === 'number' ? Math.min(5, Math.max(1, q.difficulty)) : 2,
-    confidence: typeof q.confidence === 'number' ? q.confidence : 0.5,
-    questionNum: q.questionNum ? String(q.questionNum) : undefined,
+  const topicMap: Record<string, H2Topic> = {
+    'integration': 'calculus',
+    'differentiation': 'calculus',
+    'derivatives': 'calculus',
+    'integrals': 'calculus',
+    'series': 'calculus',
+    'sequences': 'calculus',
+    'maclaurin': 'calculus',
+    'complex': 'complex-numbers',
+    'argand': 'complex-numbers',
+    'vector': 'vectors',
+    'planes': 'vectors',
+    'lines': 'vectors',
+    'permutations': 'combinatorics',
+    'combinations': 'combinatorics',
+    'distribution': 'statistics',
+    'hypothesis': 'statistics',
+    'regression': 'statistics',
+    'graphs': 'functions',
+    'transformations': 'functions',
+    'inequality': 'functions',
+    'inequalities': 'functions',
   };
-}
 
-function validateLesson(l: Record<string, unknown>) {
-  const topic = VALID_TOPICS.includes(l.topic as H2Topic)
-    ? (l.topic as H2Topic)
-    : 'calculus';
+  for (const [key, value] of Object.entries(topicMap)) {
+    if (normalized?.includes(key)) {
+      return value;
+    }
+  }
 
-  const validTypes = ['theory', 'example', 'worked_solution', 'summary'];
-  const contentType = validTypes.includes(l.contentType as string)
-    ? (l.contentType as 'theory' | 'example' | 'worked_solution' | 'summary')
-    : 'theory';
-
-  return {
-    title: String(l.title || 'Untitled'),
-    content: String(l.content || ''),
-    contentType,
-    topic,
-    order: typeof l.order === 'number' ? l.order : 0,
-    confidence: typeof l.confidence === 'number' ? l.confidence : 0.5,
-  };
-}
-
-function deduplicateQuestions(questions: ExtractedQuestion[]): ExtractedQuestion[] {
-  const seen = new Set<string>();
-  return questions.filter(q => {
-    const key = (q.content + q.answer).toLowerCase().replace(/\s+/g, ' ').trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function deduplicateLessons(lessons: ExtractedLesson[]): ExtractedLesson[] {
-  const seen = new Set<string>();
-  return lessons.filter(l => {
-    const key = l.content.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return 'calculus';
 }

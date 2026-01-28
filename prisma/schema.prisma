@@ -39,6 +39,8 @@ model ExtractedQuestion {
   solution     String?
   answer       String?
   hints        String?  // JSON array
+  diagramImage String?  // Base64 encoded diagram image
+  marks        Int?     // Total marks for the question
 
   // Classification
   topic        String

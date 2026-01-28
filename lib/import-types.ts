@@ -21,6 +21,9 @@ export interface ExtractedQuestion {
   solution?: string;
   answer?: string;
   hints?: string[];
+  diagramDescription?: string; // AI-detected description of diagram
+  diagramImage?: string; // Base64 encoded image uploaded by user
+  marks?: number; // Total marks for the question
   topic: H2Topic;
   difficulty: number; // 1-5
   confidence: number; // 0-1

@@ -71,8 +71,11 @@ export async function POST(request: NextRequest) {
     // Extract text from PDF
     let pdfResult;
     try {
+      console.log('Starting PDF text extraction, buffer size:', buffer.length);
       pdfResult = await extractTextFromPDF(buffer);
+      console.log('PDF extraction successful, pages:', pdfResult.pageCount);
     } catch (extractError) {
+      console.error('PDF extraction error:', extractError);
       await prisma.importedPDF.update({
         where: { id: importRecord.id },
         data: {
@@ -95,6 +98,7 @@ export async function POST(request: NextRequest) {
     // Extract content using AI
     let extractionResult;
     try {
+      console.log('Starting AI content extraction...');
       extractionResult = await extractContentWithAI(pdfResult.text, {
         filename: file.name,
         school,
@@ -103,7 +107,9 @@ export async function POST(request: NextRequest) {
         paperNumber,
         totalPages: pdfResult.pageCount,
       });
+      console.log(`AI extraction complete: ${extractionResult.questions.length} questions found`);
     } catch (aiError) {
+      console.error('AI extraction error:', aiError);
       await prisma.importedPDF.update({
         where: { id: importRecord.id },
         data: {
@@ -123,11 +129,11 @@ export async function POST(request: NextRequest) {
         where: { id: importRecord.id },
         data: {
           status: 'failed',
-          errorMessage: 'No questions or lessons found in PDF',
+          errorMessage: 'No questions found in PDF',
         },
       });
       return NextResponse.json(
-        { success: false, importId: importRecord.id, error: 'No content found in the PDF' },
+        { success: false, importId: importRecord.id, error: 'No questions found in the PDF' },
         { status: 400 }
       );
     }
